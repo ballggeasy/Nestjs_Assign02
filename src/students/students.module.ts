@@ -1,15 +1,18 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { StudentsService } from './students.service';
 import { StudentsController } from './students.controller';
 import { StudentsRepository } from './students.repository';
+import { Student } from './entities/student.entity';
 
 @Module({
+  imports: [TypeOrmModule.forFeature([Student])],
   controllers: [StudentsController],
   providers: [
     StudentsService,
     {
       provide: StudentsRepository,
-      useClass: StudentsRepository, // สามารถเปลี่ยนเป็น MockStudentsRepository ได้เพื่อจำลอง Dependency Injection
+      useClass: StudentsRepository,
     },
   ],
 })
