@@ -12,14 +12,44 @@ export class StudentsController {
     return this.studentsService.create(createStudentDto);
   }
 
+  @Get('summary/report')
+  getSummaryReport() {
+    return this.studentsService.getSummaryReport();
+  }
+
   @Get()
   findAll() {
     return this.studentsService.findAll();
   }
 
+  @Get(':id/views')
+  getViews(@Param('id') id: string) {
+    return this.studentsService.getViews(+id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.studentsService.findOne(+id);
+  }
+
+  @Post(':id/views/non-atomic')
+  incrementViewsNonAtomic(@Param('id') id: string) {
+    return this.studentsService.incrementViewsNonAtomic(+id);
+  }
+
+  @Post(':id/views/atomic')
+  incrementViewsAtomic(@Param('id') id: string) {
+    return this.studentsService.incrementViewsAtomic(+id);
+  }
+
+  @Post(':id/views/reset')
+  resetViews(@Param('id') id: string) {
+    return this.studentsService.resetViews(+id);
+  }
+
+  @Post(':id/send-email')
+  sendWelcomeEmail(@Param('id') id: string) {
+    return this.studentsService.sendWelcomeEmail(+id);
   }
 
   @Patch(':id')
