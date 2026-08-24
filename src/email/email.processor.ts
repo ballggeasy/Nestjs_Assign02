@@ -10,7 +10,7 @@ export class EmailProcessor extends WorkerHost {
     const attemptsMade = job.attemptsMade;
     this.logger.log(`\n--- Job ${job.id} (Attempt: ${attemptsMade + 1}) is active! ---`);
     
-    const { studentId, courseName, isInvalidEmail } = job.data;
+    const { studentId, courseName, isInvalidEmail, reqId } = job.data;
     
     // 1. จำลอง Permanent Failure (ล้มเหลวถาวร)
     // ถ้ารหัสประจำตัวนักศึกษาถูกส่งมาพร้อม flag ว่าอีเมลปลอม/ผิด 
@@ -31,10 +31,16 @@ export class EmailProcessor extends WorkerHost {
     }
 
     // ถ้ารอดมาได้จนถึง attempt ที่ 3 หรือไม่มี error ก็ทำงานปกติ
-    this.logger.log(`Sending mock email to Student ${studentId} for course: ${courseName}...`);
+    this.logger.log({
+      req: { id: reqId },
+      msg: `Sending mock email to Student ${studentId} for course: ${courseName}...`
+    });
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    this.logger.log(`✅ Email successfully sent for Job ${job.id}`);
+    this.logger.log({
+      req: { id: reqId },
+      msg: `✅ Email successfully sent for Job ${job.id}`
+    });
     
     return { status: 'completed', time: new Date() };
   }

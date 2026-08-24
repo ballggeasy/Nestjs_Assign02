@@ -10,6 +10,10 @@ export class RedisService implements OnModuleDestroy {
     @Inject('REDIS_SUBSCRIBER_CLIENT') private readonly subscriberClient: Redis,
   ) {}
 
+  getRedisClient(): Redis {
+    return this.publisherClient;
+  }
+
   async publish(channel: string, message: any): Promise<number> {
     this.logger.log(`Publishing to channel: ${channel}`);
     return this.publisherClient.publish(channel, JSON.stringify(message));

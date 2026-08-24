@@ -21,6 +21,29 @@ export class CoursesService {
     return await this.courseRepo.save(course);
   }
 
+  async getCourse(id: number) {
+    // การอ่านปกตินอก Transaction จะถูกส่งไปยัง Replica โดยอัตโนมัติ
+    return await this.courseRepo.findOneBy({ id });
+  }
+
+  async testReplicationLag() {
+    // 1. เขียนลง Primary
+    const course = this.courseRepo.create({ name: 'Lag Test Course', availableSeats: 100 });
+    const saved = await this.courseRepo.save(course);
+    
+    // 2. อ่านจาก Replica ทันที
+    const startTime = Date.now();
+    const found = await this.courseRepo.findOneBy({ id: saved.id });
+    const endTime = Date.now();
+
+    return {
+      message: found ? 'พบข้อมูลใน Replica (ไม่มี Lag หรือ Lag น้อยมาก)' : 'ไม่พบข้อมูลใน Replica! (เกิด Replication Lag)',
+      readLatencyMs: endTime - startTime,
+      savedId: saved.id,
+      found: !!found,
+    };
+  }
+
   // สมัครเรียน แบบไม่มีการป้องกัน Race Condition
   async enroll(courseId: number) {
     // 1. อ่านข้อมูลจำนวนที่นั่ง
@@ -45,7 +68,7 @@ export class CoursesService {
   }
 
   // สมัครเรียน แบบปลอดภัย (มี Transaction + Pessimistic Lock)
-  async enrollSafe(courseId: number, studentId?: number) {
+  async enrollSafe(courseId: number, studentId?: number, reqId?: string) {
     return await this.courseRepo.manager.transaction(async (manager) => {
       // 1. อ่านข้อมูลจำนวนที่นั่ง พร้อม "ล็อก" แถวข้อมูลนี้ไว้ (คนอื่นรอจนกว่าเราจะ commit)
       const course = await manager.findOne(Course, {
@@ -75,6 +98,7 @@ export class CoursesService {
         courseName: course.name,
         studentId: studentId || null,
         timestamp: new Date().toISOString(),
+        reqId,
       };
       await this.redisService.publish('course.enrollment.created', payload);
 
@@ -88,6 +112,7 @@ export class CoursesService {
             // ส่งค่าไปเพื่อใช้จำลอง Permanent Failure ใน Part 4
             // (เช่น สมมติว่าถ้า studentId == 999 ให้จำลองว่าเป็นอีเมลปลอม)
             isInvalidEmail: studentId === 999,
+            reqId,
           },
           {
             attempts: 3,

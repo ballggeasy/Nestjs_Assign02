@@ -14,8 +14,11 @@ export class AppService implements OnModuleInit {
     });
 
     // Subscribe to enrollment created event (Part 2)
-    this.redisService.subscribe('course.enrollment.created', (message) => {
-      this.logger.log(`🎉 [Subscriber] Received Enrollment Event: ${JSON.stringify(message)}`);
+    this.redisService.subscribe('course.enrollment.created', (payload) => {
+      this.logger.log({
+        req: { id: payload.reqId }, // Use req.id format to match pino-http correlation ID format
+        msg: `🎉 [Subscriber] Received Enrollment Event: ${JSON.stringify(payload)}`
+      });
     });
   }
 

@@ -9,8 +9,6 @@ import { StudentsRepository } from './students.repository';
 
 @Injectable()
 export class StudentsService {
-  private activeQueries = new Map<string, Promise<any>>();
-
   constructor(
     private readonly studentsRepository: StudentsRepository,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
@@ -23,23 +21,33 @@ export class StudentsService {
 
   async getSummaryReport() {
     const cacheKey = 'students:summary';
+    const lockKey = 'lock:students:summary';
     
     // 1. Check Redis Cache
-    const cached = await this.cacheManager.get(cacheKey);
+    let cached = await this.cacheManager.get(cacheKey);
     if (cached) {
       console.log('[Cache Hit] Returning summary report');
       return cached;
     }
 
-    // 2. Lock-based approach (Promise Deduplication)
-    // ถ้าระหว่างนี้มีคนกำลัง Query คีย์นี้อยู่ (มี Lock) ให้รอและเอาผลลัพธ์จากคิวรี่แรกไปเลย ไม่ต้องไปต่อ DB ใหม่
-    if (this.activeQueries.has(cacheKey)) {
+    // 2. Lock-based approach using Redis
+    const acquired = await this.redisClient.set(lockKey, 'locked', {
+      NX: true,
+      PX: 10000,
+    });
+
+    if (!acquired) {
       console.log('🔒 [Lock] Request is waiting for existing database query to finish...');
-      return this.activeQueries.get(cacheKey);
+      // Wait and poll cache
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        cached = await this.cacheManager.get(cacheKey);
+        if (cached) return cached;
+      }
+      throw new Error('Timeout waiting for cache');
     }
 
-    // 3. ถ้าไม่มีคน Query อยู่ ให้สร้าง Promise ขึ้นมาใหม่และเก็บไว้ใน activeQueries เพื่อเป็น Lock
-    const promise = (async () => {
+    try {
       console.log('[Cache Miss] 🚀 Generating heavy summary report... (3 seconds)');
       // Simulate heavy query
       await new Promise(resolve => setTimeout(resolve, 3000));
@@ -49,16 +57,11 @@ export class StudentsService {
       await this.cacheManager.set(cacheKey, report, 5000);
       console.log('[Cache Set] Summary report cached');
       
-      // ปลด Lock ออกเมื่อทำงานเสร็จ
-      this.activeQueries.delete(cacheKey);
-      
       return report;
-    })();
-
-    // เซ็ต Lock ทันทีที่ Request แรกเข้ามา
-    this.activeQueries.set(cacheKey, promise);
-
-    return promise;
+    } finally {
+      // Release lock
+      await this.redisClient.del(lockKey);
+    }
   }
 
   findAll() {
