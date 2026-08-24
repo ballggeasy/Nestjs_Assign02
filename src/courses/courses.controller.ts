@@ -16,7 +16,7 @@ export class CoursesController {
   }
 
   @Post(':id/enroll-safe')
-  enrollSafe(@Param('id') id: string) {
-    return this.coursesService.enrollSafe(+id);
+  enrollSafe(@Param('id') id: string, @Body('studentId') studentId?: number) {
+    return this.coursesService.enrollSafe(+id, studentId);
   }
 }

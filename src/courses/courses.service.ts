@@ -2,12 +2,17 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Course } from './entities/course.entity';
+import { RedisService } from '../redis/redis.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class CoursesService {
   constructor(
     @InjectRepository(Course)
     private readonly courseRepo: Repository<Course>,
+    private readonly redisService: RedisService,
+    @InjectQueue('email') private readonly emailQueue: Queue,
   ) {}
 
   // สร้างคอร์สเรียนเพื่อทดสอบ
@@ -40,7 +45,7 @@ export class CoursesService {
   }
 
   // สมัครเรียน แบบปลอดภัย (มี Transaction + Pessimistic Lock)
-  async enrollSafe(courseId: number) {
+  async enrollSafe(courseId: number, studentId?: number) {
     return await this.courseRepo.manager.transaction(async (manager) => {
       // 1. อ่านข้อมูลจำนวนที่นั่ง พร้อม "ล็อก" แถวข้อมูลนี้ไว้ (คนอื่นรอจนกว่าเราจะ commit)
       const course = await manager.findOne(Course, {
@@ -63,6 +68,36 @@ export class CoursesService {
       // 3. ลดจำนวนที่นั่งและบันทึก
       course.availableSeats -= 1;
       await manager.save(course);
+
+      // 4. Publish Event 'enrollment.created'
+      const payload = {
+        courseId: course.id,
+        courseName: course.name,
+        studentId: studentId || null,
+        timestamp: new Date().toISOString(),
+      };
+      await this.redisService.publish('course.enrollment.created', payload);
+
+      // 5. Add job to email queue (Part 3 & 4)
+      if (studentId) {
+        await this.emailQueue.add(
+          'sendWelcomeEmail',
+          {
+            studentId,
+            courseName: course.name,
+            // ส่งค่าไปเพื่อใช้จำลอง Permanent Failure ใน Part 4
+            // (เช่น สมมติว่าถ้า studentId == 999 ให้จำลองว่าเป็นอีเมลปลอม)
+            isInvalidEmail: studentId === 999,
+          },
+          {
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 1000,
+            },
+          },
+        );
+      }
 
       return { success: true, seatsLeft: course.availableSeats };
     });
